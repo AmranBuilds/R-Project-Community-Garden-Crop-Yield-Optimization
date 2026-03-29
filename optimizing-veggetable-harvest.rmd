@@ -1,0 +1,132 @@
+---
+title: "R Project: Community Garden Crop Yield Optimization via Linear Programming"
+author: "Amran Haji Omar"
+date: "2026-03-28"
+output: html_document
+---
+
+### Problem Formulation
+
+The objective of the project was to determine the optimal area allocation for three crops to maximize total nutritional yield (kilocalories) within strict resource constraints, while meeting a baseline protein requirement for the community.
+
+Let the decision variables represent the area allocated to each crop in square feet:
+
+* $x_1$: Tomatoes
+* $x_2$: Carrots
+* $x_3$: Beans
+
+### Resource Constraints
+
+* Physical area: $\le 1000$ sq ft
+* Water allocation: $\le 800$ gallons/week
+* Labor capacity: $\le 80$ hours/week
+
+### Proportional Diversity Constraints
+
+To ensure a diverse yield, no single crop may exceed 40% of the total allocated area:
+
+* **Tomatoes ($x_1$):** $0.6x_1 - 0.4x_2 - 0.4x_3 \le 0$
+* **Carrots ($x_2$):** $-0.4x_1 + 0.6x_2 - 0.4x_3 \le 0$
+* **Beans ($x_3$):** $-0.4x_1 - 0.4x_2 + 0.6x_3 \le 0$
+
+### Nutritional Demand Constraints (Protein)
+
+The garden was modeled to provide a supplemental food source (20% of total dietary requirements) for 10 adults. 
+
+* Average adult requirement: 50g per day (350g per week).
+* Total community demand (10 adults): 3,500g per week.
+* Supplemental target (20%): 700g per week.
+
+Protein yield per square foot is calculated as:
+* **Tomatoes ($x_1$):** 2 lbs/sq ft $\times$ 4g/lb = 8g/sq ft
+* **Carrots ($x_2$):** 1 lb/sq ft $\times$ 4g/lb = 4g/sq ft
+* **Beans ($x_3$):** 0.5 lbs/sq ft $\times$ 90g/lb = 45g/sq ft
+
+The minimum protein constraint is formulated as:
+$$8x_1 + 4x_2 + 45x_3 \ge 700$$
+
+### Objective Function Normalization (Kilocalories)
+
+Applying standard caloric densities to the physical yield rates normalizes the objective function to maximize total kilocalories ($Z$):
+
+* **Tomatoes ($x_1$):** $2 \text{ lbs/sq ft} \times 80 \text{ kcal/lb} = 160 \text{ kcal/sq ft}$
+* **Carrots ($x_2$):** $1 \text{ lbs/sq ft} \times 185 \text{ kcal/lb} = 185 \text{ kcal/sq ft}$
+* **Beans ($x_3$):** $0.5 \text{ lbs/sq ft} \times 140 \text{ kcal/lb} = 70 \text{ kcal/sq ft}$
+
+$$\max Z = 160x_1 + 185x_2 + 70x_3$$
+
+### Optimization Model
+
+The optimal crop allocation was computed using the simplex algorithm via the `lpSolve` package in R.
+
+```{r warning=FALSE, message=FALSE}
+# Load lpSolve
+library(lpSolve)
+
+# Objective function coefficients (kcal/sq ft)
+obj <- c(160, 185, 70)
+
+# Constraint matrix (Area, Water, Labor, Max T, Max C, Max B, Min Protein)
+con <- matrix(c(
+  1, 1, 1,
+  1, 0.5, 0.5,
+  0.1, 0.05, 0.05,
+  0.6, -0.4, -0.4,
+  -0.4, 0.6, -0.4,
+  -0.4, -0.4, 0.6,
+  8, 4, 45
+), nrow = 7, byrow = TRUE)
+
+# Constraint directions
+dir <- c("<=", "<=", "<=", "<=", "<=", "<=", ">=")
+
+# Constraint bounds
+rhs <- c(1000, 800, 80, 0, 0, 0, 700)
+
+# Execute optimization
+sol <- lp("max", obj, con, dir, rhs)
+
+# Output results
+cat("Maximized Nutritional Yield (kcal):", sol$objval, "\n\n")
+cat("Optimal Area Allocation (sq ft):\n")
+cat("Tomatoes:", sol$solution[1], "\n")
+cat("Carrots: ", sol$solution[2], "\n")
+cat("Beans:   ", sol$solution[3], "\n")
+
+# Calculate resulting protein
+total_protein <- (8 * sol$solution[1]) + (4 * sol$solution[2]) + (45 * sol$solution[3])
+cat("\nTotal Protein Yield (g):", total_protein, "\n")
+```
+
+```{r}
+# Visualize optimal allocation
+crops <- c("Tomatoes", "Carrots", "Beans")
+
+barplot(
+  sol$solution, 
+  names.arg = crops, 
+  col = c("#ff6347", "#ffa500", "#90ee90"),
+  main = "Optimal Crop Allocation with Proportional & Nutritional Limits",
+  ylab = "Area (Square Feet)",
+  ylim = c(0, 1000)
+)
+```
+
+### Results Interpretation
+
+The solver determined the optimal crop distribution to be $x_1 = 400$ sq ft (Tomatoes), $x_2 = 400$ sq ft (Carrots), and $x_3 = 200$ sq ft (Beans).
+
+The $700$g minimum protein constraint is "non-binding" because the optimal solution natively exceeds it. 
+
+* **Forced Allocation:** The $40\%$ maximum area rule restricts primary crops, forcing a $200$ sq ft allocation to beans.
+* **Protein Surplus:** At $45$g per sq ft, beans alone generate $9,000$g of protein. 
+* **Total Yield:** Combined with tomatoes ($3,200$g) and carrots ($1,600$g), the weekly output reaches $13,800$g, far exceeding the $700$g requirement.  
+
+### References
+
+Cornell University Cooperative Extension. (n.d.). *Recommended spacing and expected yield for garden vegetables in New York*. <https://gardening.cals.cornell.edu/files/Recommended-spacing-and-expected-yield-for-garden-vegetables-in-New-York-1iozy2c.pdf>
+
+Kansas State University Agricultural Experiment Station and Cooperative Extension Service. (n.d.). *Vegetable garden planting guide*. <https://bookstore.ksre.ksu.edu/pubs/vegetable-garden-planting-guide-revised_MF315.pdf>
+
+Penn State Extension. (n.d.). *Vegetable seed planting guide*. Pennsylvania State University. <https://extension.psu.edu/programs/master-gardener/counties/york/vegetable-guides/vegetable-seed-planting-guide/@@download/file/Vegetable-Seed-Planting-Guide.pdf>
+
